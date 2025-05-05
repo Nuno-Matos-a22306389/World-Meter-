@@ -1,0 +1,550 @@
+package pt.ulusofona.aed.deisiworldmeter;
+
+import java.util.*;
+import java.text.Normalizer;
+
+public class MainQueryFunctions {
+
+    static Result commandHelp() {
+
+        String inf = """
+                -------------------------
+                Commands available:
+                COUNT_CITIES ‹min_population>
+                GET_CITIES_BY_COUNTRY ‹num-results> <country-name>
+                SUM_POPULATIONS <countries-list>
+                GET_HISTORY <year-start> <year-end> ‹country_name>
+                GET_MISSING_HISTORY <year-start> <year-end›
+                GET_MOST_POPULOUS <num-results>
+                GET_TOP_CITIES_BY_COUNTRY <num-results> ‹country-name>
+                GET_DUPLICATE_CITIES ‹min_population>
+                GET_COUNTRIES_GENDER_GAP <min-gender-gap>
+                GET_TOP_POPULATION_INCREASE <year-start> <year_end>
+                GET_DUPLICATE_CITIES_DIFFERENT_COUNTRIES ‹min-population>
+                GET_CITIES_AT_DISTANCE <distance> <country-name>
+                GET_COUNTRIES_BY_FIRST_LETTER <first-letter>
+                INSERT_CITY ‹alfa2> <city-name> ‹region> ‹population>
+                REMOVE_COUNTRY <country-name>
+                HELP
+                QUIT
+                -------------------------
+                """;
+
+        return new Result(true, null, inf); //Sempre que o resultado for válido
+
+    }
+
+    static Result commandCountCities(int min_population) {
+
+        int count = 0;
+
+        for (Pais pais : Main.csvCountries) {
+            for (Cidade cidade : pais.cidades) {
+                if (cidade.populacao >= min_population) {
+                    count++;
+                }
+            }
+        }
+
+        return new Result(true, null, "" + count);
+    }
+
+    static Result commandGetCitiesByCountry(int num_results, String country_name) {
+
+        StringBuilder cidadesDeUmPais = new StringBuilder();
+
+        Pais pais = Main.nomePaisesValidos.get(country_name);
+        int count = 0;
+
+        for (Cidade cidade : pais.cidades) {
+
+            if (num_results == -1) {
+
+                cidadesDeUmPais.append(cidade.cidade).append("\n");
+
+            } else if (count < num_results) {
+
+                cidadesDeUmPais.append(cidade.cidade).append("\n");
+                count++;
+
+            }
+        }
+
+        return new Result(true, null, cidadesDeUmPais.toString()); //sempre que comando inv
+    }
+
+    static Result commandSumPopulation(String countries_list) { //Ano 2024
+
+        try {
+
+            int sum = 0; //Pop, masc+fem. ficheiro pop, daquele pais
+
+            String[] countriesList = countries_list.split(",");
+
+            for (String country : countriesList) {
+
+                Pais pais = Main.nomePaisesValidos.get(country);
+
+                if (pais == null) {
+
+                    return new Result(true, "Pais invalido: " + country, "Pais invalido: " + country); //sempre que comando inv
+
+                } else {
+
+
+                    for (Populacao populacao : pais.populacao) {
+                        if (populacao.ano == 2024) {
+                            sum += populacao.populacaoFeminina + populacao.populacaoMasculina;
+                        }
+                    }
+                }
+
+                }
+            if (sum == 0){
+                return new Result(true,null,"Ops");
+            }
+
+            return new Result(true, null, Integer.toString(sum));
+
+        } catch (IndexOutOfBoundsException e) {
+            return new Result(false, "comando invalido", null); //sempre que comando inv
+        }
+
+
+    }
+
+    static Result commandGetHistory(int year_start, int year_end, String country_name) {
+        try {
+            String Resultado = "";
+            Pais pais = Main.nomePaisesValidos.get(country_name);
+
+            if (pais == null) {
+                return new Result(true, "Pais invalido: " + country_name, "Pais invalido: " + country_name);
+            } else {
+                for (int i = year_start; i <= year_end; i++) {
+                    for (Populacao populacao : pais.populacao) {
+                        if (populacao.ano == i) {
+                            int popMasc = populacao.populacaoMasculina / 1000;
+                            int popFemi = populacao.populacaoFeminina / 1000;
+                            Resultado += i + ":" + popMasc + "k:" + popFemi + "k\n";
+
+                        }
+                    }
+                }
+                return new Result(true, null, Resultado);
+            }
+        } catch (IndexOutOfBoundsException e) {
+            return new Result(false, "comando invalido", null);
+        }
+    }
+
+    static Result commandGetMissingHistory(int year_start, int year_end) {
+        try {
+            StringBuilder resultado = new StringBuilder();
+
+            for (Pais pais : Main.csvCountries) {
+                for (int i = year_start; i <= year_end; i++) {
+                    boolean ano = false;
+                    for (Populacao populacao : pais.populacao) {
+                        if (populacao.ano == i) {
+                            ano = true;
+                            break;
+                        }
+                    }
+                    if (!ano) {
+                        resultado.append(pais.alfa2).append(":").append(pais.nome).append("\n");
+                        break;
+                    }
+                }
+            }
+
+            if (!resultado.toString().isEmpty()) {
+                return new Result(true, null, resultado.toString());
+            } else {
+                return new Result(true, null, "Sem resultados");
+            }
+
+        } catch (IndexOutOfBoundsException e) {
+            return new Result(false, "comando invalido", null);
+        }
+    }
+
+    static Result commandGetMostPopulous(int num_results) {
+        if (num_results <= 0) {
+            return new Result(false, "comando invalido", null);
+        }
+
+        try {
+            List<Cidade> sortedCities = new ArrayList<>(Main.csvCitiesWithCountry);
+            sortedCities.sort((cidade1, cidade2) -> Integer.compare(cidade2.populacao, cidade1.populacao));
+            Set<String> includedCountries = new HashSet<>();
+
+            Map<String, String> countryMap = new HashMap<>();
+            for (Pais pais : Main.csvCountries) {
+                countryMap.put(pais.alfa2, pais.nome);
+            }
+
+            StringBuilder resultado = new StringBuilder();
+
+            int i = 0;
+            int j = 0;
+            while (i < num_results && j < sortedCities.size()) {
+                Cidade cidade = sortedCities.get(j);
+                String paisNome = countryMap.get(cidade.alfa2);
+                if (!includedCountries.contains(cidade.alfa2)) {
+                    resultado.append(paisNome).append(":").append(cidade.cidade).append(":").append(cidade.populacao).append("\n");
+                    includedCountries.add(cidade.alfa2);
+                    i++;
+                }
+                j++;
+            }
+
+            if (!resultado.isEmpty()) {
+                return new Result(true, null, resultado.toString());
+            } else {
+                return new Result(true, null, "Sem resultados");
+            }
+        } catch (IndexOutOfBoundsException e) {
+            return new Result(false, "comando invalido", null);
+        }
+    }
+
+    static Result commandGetTopCitiesByCountry(int num_results, String country_name) {
+
+        try {
+
+            StringBuilder result = new StringBuilder();
+            Pais pais = Main.nomePaisesValidos.get(country_name);
+            HashSet<String> incluido = new HashSet<>();
+            ArrayList<Abuga> lista = new ArrayList<>();
+            int contar =0;
+            if (pais==null){
+                return new Result(true,null,"Pais inválido");
+            }
+            // pais.cidades.sort(Comparator.comparing((Cidade a) -> Math.round(a.populacao / 1000.0)).reversed().thenComparing((Cidade a) -> a.cidade.trim()));
+
+            int count = 0;
+
+            for (Cidade cidade : pais.cidades) {
+                    if (num_results == -1) {
+
+                        int rounded = cidade.populacao / 1000;
+                        if (cidade.populacao > 7500) {
+                            if (rounded >= 7) {
+                                lista.add(new Abuga(cidade.cidade, rounded));
+                                contar++;
+                                // result.append(cidade.cidade).append(":").append(rounded).append("K").append("\n");
+                            }
+                        }
+                        } else if (count < num_results) {
+
+                            int rounded = cidade.populacao / 1000;
+                            lista.add((new Abuga(cidade.cidade, rounded)));
+                            //result.append(cidade.cidade).append(":").append(rounded).append("K").append("\n");
+
+                            count++;
+                            contar++;
+                        } else {
+
+                            break;
+
+                        }
+
+            }
+            if (lista.isEmpty()){
+                return new Result(true,null,"Parece um deserto");
+            }
+            lista.sort(Comparator.comparing((Abuga a)-> a.nome).reversed());
+            for (int i=0;i<contar;i++){
+                Abuga Abuga = lista.get(i);
+                result.append(Abuga.nome).append(":").append(Abuga.rounded).append("K").append("\n");
+            }
+
+
+            return new Result(true, null, result.toString());
+
+        } catch (Exception e) {
+            return new Result(false, "comando invalido", null); //sempre que comando inv
+
+        }
+
+    }
+
+    static  class Abuga{
+        String nome;
+        int rounded;
+
+        Abuga(String nome, int rounded){
+            this.nome = nome;
+            this.rounded = rounded;
+        }
+    }
+
+    static Result commandGetDuplicateCities(int min_population) {
+
+        ArrayList<Cidade> cidadesDuplicadas = new ArrayList<>();
+
+        for (Cidade cidade : Main.csvCitiesWithCountry) {
+
+            for (int i = 1; i < Main.csvCitiesWithCountry.size(); i++) {
+
+                if (cidade.cidade.equals(Main.csvCitiesWithCountry.get(i).cidade)) {
+
+                    cidadesDuplicadas.add(Main.csvCitiesWithCountry.get(i));
+
+                }
+
+            }
+
+        }
+
+        StringBuilder result = new StringBuilder();
+
+        for (Cidade cidade1 : cidadesDuplicadas) {
+
+            if (cidade1.populacao >= min_population) {
+                result.append(cidade1.cidade).append("  (").append(cidade1.pais).append(",").append(cidade1.regiao).append(")\n");
+            }
+
+        }
+
+        if (result.toString().isEmpty()) {
+
+            return new Result(true, null, "Sem resultado");
+
+        } else {
+
+            return new Result(true, null, result.toString());
+        }
+
+    }
+
+    static Result commandGetCountriesGenderGap(int min_gender_gap) {
+        try {
+            StringBuilder result = new StringBuilder();
+            for (Pais pais : Main.csvCountries) {
+                float conta;
+                for (Populacao populacao : pais.populacao) {
+                    if (populacao.ano == 2024) {
+                        if (populacao.populacaoMasculina > populacao.populacaoFeminina) {
+                            conta = ((float) (populacao.populacaoMasculina - populacao.populacaoFeminina)
+                                    / (populacao.populacaoMasculina + populacao.populacaoFeminina)) * 100;
+                        } else {
+                            conta = ((float) (populacao.populacaoFeminina - populacao.populacaoMasculina)
+                                    / (populacao.populacaoMasculina + populacao.populacaoFeminina)) * 100;
+                        }
+                        if (conta > min_gender_gap) {
+                            String contaDecimais = String.format("%.2f", conta);
+                            result.append(pais.nome).append(":").append(contaDecimais).append("\n");
+                        }
+                    }
+                }
+            }
+            if (result.toString().isEmpty()) {
+                return new Result(true, null, "Sem resultados");
+            } else {
+                return new Result(true, null, result.toString());
+            }
+        } catch (IndexOutOfBoundsException e) {
+            return new Result(false, "comando invalido", null);
+        }
+    }
+
+    static Result commandGetTopPopulationIncrease(int year_start, int year_end) {
+        try {
+            StringBuilder result = new StringBuilder();
+            HashMap<Integer, HashMap<Integer, Integer>> populacaoPorAno = new HashMap<>();
+            ArrayList<Incribel> abuga = new ArrayList<>();
+
+            for (Populacao pop : Main.csvPopulationWCountryAndCity) {
+                populacaoPorAno.putIfAbsent(pop.ano, new HashMap<>());
+                populacaoPorAno.get(pop.ano).put(pop.id, pop.populacaoMasculina + pop.populacaoFeminina);
+            }
+
+            for (Pais pais : Main.csvCountries) {
+                int id = pais.id;
+                for (int i = year_start; i < year_end; i++) {
+                    for (int j = i + 1; j <= year_end; j++) {
+                        if (populacaoPorAno.containsKey(i) && populacaoPorAno.get(i).containsKey(id)
+                                && populacaoPorAno.containsKey(j) && populacaoPorAno.get(j).containsKey(id)) {
+                            int popTotalAnt = populacaoPorAno.get(i).get(id);
+                            int popTotal = populacaoPorAno.get(j).get(id);
+                            double populacaoIncrease = (((double) popTotal - popTotalAnt) / popTotal) * 100;
+
+                            abuga.add(new Incribel(pais.nome, i + "-" + j, populacaoIncrease));
+                        }
+                    }
+                }
+            }
+
+            abuga.sort(Comparator.comparing((Incribel a) -> a.increase).reversed());
+
+            for (int i = 0; i < 5 && i < abuga.size(); i++) {
+                Incribel incribel = abuga.get(i);
+                if (incribel.increase > 0) {
+                    result.append(incribel.nome).append(":").append(incribel.anos).append(":")
+                            .append(String.format("%.2f", incribel.increase)).append("%\n");
+                }
+            }
+            return new Result(true, null, result.toString());
+        }catch (IndexOutOfBoundsException e){
+            return new Result(false, "comando invalido", null);
+        }
+    }
+
+    static class Incribel {
+        String nome;
+        String anos;
+        double increase;
+
+        Incribel(String nome, String anos, double aumento) {
+            this.nome = nome;
+            this.anos = anos;
+            this.increase = aumento;
+        }
+    }
+
+    static Result commandGetDuplicateCitiesDifferentCountries(int min_population) {
+        return new Result(false, "comando invalido", null); //sempre que comando inv
+    }
+
+    static Result commandGetCitiesAtDistance(int distance, String country_name) {
+        return new Result(false, "comando invalido", null); //sempre que comando inv
+    }
+
+    static Result commandInsertCity(String alfa2, String city_name, String region, int population) {
+
+        try {
+
+            Cidade cidade;
+            cidade = new Cidade();
+            cidade.alfa2 = alfa2.trim();
+            cidade.cidade = city_name;
+            cidade.regiao = region;
+            cidade.populacao = population;
+
+            Pais paisesAlfa2 = Main.alfa2PaisesValidos.get(alfa2.trim());
+
+            if (paisesAlfa2 != null) {
+
+                if (paisesAlfa2.alfa2.equals(alfa2)) {
+
+                    paisesAlfa2.cidades.add(cidade); // alfa2PaisesValidos
+                    Main.csvCitiesWithCountry.add(cidade); // csv cities
+
+                    return new Result(true, null, "Inserido com sucesso");
+
+                }
+
+            }
+
+            return new Result(true, null, "Pais invalido");
+
+        } catch (Exception e) {
+
+            return new Result(false, "comando invalido", null);
+
+        }
+
+    }
+
+    static Result commandRemoveCountry(String country_name) {
+
+        try {
+
+            Iterator<Pais> iterator = Main.csvCountries.iterator();
+
+            while (iterator.hasNext()) {
+
+                Pais pais = iterator.next();
+
+                if (pais.nome.equals(country_name)) {
+                    pais.cidades = new ArrayList<>();
+                    pais.populacao = new ArrayList<>();
+                    iterator.remove();
+                    break;
+                }
+
+            }
+
+            return new Result(true, null, "Removido com sucesso");
+
+        } catch (NullPointerException e) {
+
+            return new Result(false, "comando invalido", null); //sempre que comando inv
+
+        }
+
+    }
+
+    static Result commandGetCountryFirstLetter(String first_letter)     {
+        try {
+            StringBuilder result = new StringBuilder();
+            String normalizedFirstLetter = Normalizer.normalize(first_letter, Normalizer.Form.NFD)
+                    .replaceAll("\\p{M}", "")
+                    .toLowerCase();
+
+            for (Pais pais : Main.csvCountries) {
+                String nome = pais.nome;
+                String normalizedCountryFirstLetter = Normalizer.normalize(nome.substring(0, 1), Normalizer.Form.NFD)
+                        .replaceAll("\\p{M}", "")
+                        .toLowerCase();
+
+                if (normalizedCountryFirstLetter.equals(normalizedFirstLetter)) {
+                    result.append(pais.nome).append("\n");
+                }
+            }
+            if (!result.isEmpty()) {
+                return new Result(true, null, result.toString());
+            }
+            return new Result(true,null,"Sem resultados");
+        } catch (NumberFormatException e) {
+            return new Result(false, "comando invalido", null);
+        }
+    }
+
+    static  Result commandGetCountryByDensity(String density){
+        try {
+            int id = 0;
+            int count = 0;
+            ArrayList <Densooooo> lista = new ArrayList<>();
+            StringBuilder result = new StringBuilder();
+            HashSet<String> incluido = new HashSet<>();
+
+            for (Populacao populacao: Main.csvPopulationWCountryAndCity){
+                if (populacao.densidade>Integer.parseInt(density)){
+                    id = populacao.id;
+                    for (Pais pais : Main.csvCountries){
+                        if (pais.id ==id){
+                            lista.add(new Densooooo(pais.nome, populacao.densidade,populacao.ano));
+                            count++;
+                        }
+                    }
+                }
+            }
+            lista.sort(Comparator.comparing((Densooooo a)-> a.densidade).reversed());
+            for (int i=0;i<count;i++){
+                Densooooo denso = lista.get(i);
+                if (!incluido.contains(denso.nome)) {
+                    result.append(denso.ano).append(":").append(denso.nome).append(":").append(denso.densidade).append("\n");
+                    incluido.add(denso.nome);
+                }
+            }
+            return  new Result(true,null, result.toString());
+        }catch (Exception e){
+            return new Result(false, "comando invalido", null);
+        }
+    }
+
+    static  class Densooooo{
+        String nome;
+        float densidade;
+        int ano;
+
+         Densooooo (String nome, float densidade,int ano){
+             this.nome = nome;
+             this.densidade = densidade;
+             this.ano = ano;
+        }
+    }
+}
